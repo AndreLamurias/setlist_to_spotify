@@ -160,9 +160,9 @@ def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
 
     for song in songs:
         search = requests.get("https://api.spotify.com/v1/search", headers=headers, params={
-            "q": f"{song} {artist_name}",
+            "q": f"{artist_name} {song} ",
             "type": "track",
-            "limit": 5
+            "limit": 10
         }).json()
 
         tracks = search.get("tracks", {}).get("items", [])
@@ -181,6 +181,9 @@ def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
                 break
         
         if not found:
+            print([t["name"] for t in tracks])
+            print(f"{song} {artist_name}")
+            breakpoint()
             print(f"❌ Not found or wrong artist: {song}")
 
     if not uris:
