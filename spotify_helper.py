@@ -4,6 +4,14 @@ import time
 import base64
 import re
 import requests
+from urllib.parse import urlencode
+import webbrowser
+import base64
+import json
+import time
+import click
+from rich.prompt import Prompt
+import sys
 
 REDIRECT_URI = "http://localhost:8888/callback"
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -67,7 +75,7 @@ def authorize_user():
     "client_id": SPOTIFY_CLIENT_ID,
     "response_type": "code",
     "redirect_uri": REDIRECT_URI,
-    "scope": "playlist-modify-public playlist-modify-private"
+    "scope": "playlist-modify-public playlist-modify-private playlist-read-private"
 }
 
     auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
@@ -128,3 +136,118 @@ def get_user_playlists(access_token):
 
     return playlists
 
+def get_playlist_tracks(access_token, playlist_id):
+    headers = {"Authorization": f"Bearer {access_token}"}
+    tracks = []
+
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+    while url:
+        res = requests.get(url, headers=headers)
+        
+        if res.status_code != 200:
+            breakpoint()
+            print(f"[red]❌ Failed to fetch playlist tracks: {res.status_code} - {res.text}[/red]")
+            sys.exit()
+            return []
+
+        try:
+            data = res.json()
+        except ValueError:
+            print(f"[red]❌ Invalid JSON in playlist tracks response[/red]")
+            return []
+
+        items = data.get("items", [])
+        for item in items:
+            track = item.get("track")
+            if track:
+                tracks.append(track)
+
+        url = data.get("next")  # handle pagination
+
+    return tracks
+
+def extract_playlist_id(url_or_id):
+    if "spotify.com/playlist/" in url_or_id:
+        match = re.search(r"playlist/([a-zA-Z0-9]+)", url_or_id)
+        return match.group(1) if match else None
+    return url_or_id  # assume it's a raw ID
+
+
+from difflib import SequenceMatcher
+
+def create_spotify_playlist(access_token, user_id, name, description="", public=False):
+    url = f"https://api.spotify.com/v1/users/{user_id}/playlists"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "name": name,
+        "description": description,
+        "public": public
+    }
+    response = requests.post(url, headers=headers, json=data)
+    if response.status_code == 201:
+        playlist = response.json()
+        print(f"✅ Created playlist: [bold]{playlist['name']}[/bold]")
+        return playlist["id"]
+    else:
+        print(f"[red]❌ Failed to create playlist: {response.text}[/red]")
+        return None
+
+
+def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
+    headers = {"Authorization": f"Bearer {access_token}"}
+    uris = []
+
+    # Get the existing tracks in the playlist
+    existing_tracks = get_playlist_tracks(access_token, playlist_id)
+    existing_uris = {track["uri"] for track in existing_tracks}
+
+    def similar(a, b): return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+    for song in songs:
+        search = requests.get("https://api.spotify.com/v1/search", headers=headers, params={
+            "q": f"{artist_name} {song} ",
+            "type": "track",
+            "limit": 10
+        }).json()
+
+        tracks = search.get("tracks", {}).get("items", [])
+        found = False
+        for track in tracks:
+            track_artists = [artist["name"] for artist in track["artists"]]
+            track_uri = track["uri"]
+            if any(similar(track_artist, artist_name) > 0.8 for track_artist in track_artists):
+                if track_uri not in existing_uris:  # Check if the track is already in the playlist
+                    uris.append(track_uri)
+                    existing_uris.add(track_uri)  # Add the URI to the set of existing URIs
+                    print(f"✅ Found and added: {song} by {', '.join(track_artists)} {track_uri}")
+                else:
+                    print(f"❌ Skipping duplicate: {song} by {', '.join(track_artists)} {track_uri}")
+                found = True
+                break
+        
+        if not found:
+            print([t["name"] for t in tracks])
+            print(f"{song} {artist_name}")
+            #breakpoint()
+            print(f"❌ Not found or wrong artist: {song}")
+
+    if not uris:
+        print("No new songs found to add.")
+        return 0
+
+    # Add non-duplicate songs to the playlist
+    res = requests.post(
+        f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+        headers=headers,
+        json={"uris": uris}
+    )
+
+    if res.status_code == 201:
+        print("[green]🎉 Songs added to playlist![/green]")
+        return len(uris)
+    else:
+        print(f"[red]Failed to add songs: {res.text}[/red]")
+        return 0
