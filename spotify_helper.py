@@ -5,11 +5,9 @@ import base64
 import re
 import requests
 from urllib.parse import urlencode
-import webbrowser
 import base64
 import json
 import time
-import click
 from rich.prompt import Prompt
 import sys
 
