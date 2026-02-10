@@ -10,17 +10,20 @@ import json
 import time
 from rich.prompt import Prompt
 import sys
+from dotenv import load_dotenv  # Add this
 
-REDIRECT_URI = "http://localhost:8888/callback"
+load_dotenv()  # Add this immediately
+
+REDIRECT_URI = "http://127.0.0.1:8888/callback"
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 TOKEN_FILE = ".spotify_token.json"
 
 
-def extract_playlist_id(url):
-    """Extracts playlist ID from a full Spotify playlist URL"""
-    match = re.search(r"playlist/([a-zA-Z0-9]+)", url)
-    return match.group(1) if match else None
+#def extract_playlist_id(url):
+#    """Extracts playlist ID from a full Spotify playlist URL"""
+#    match = re.search(r"playlist/([a-zA-Z0-9]+)", url)
+#    return match.group(1) if match else None
 
 def get_spotify_token():
     if os.path.exists(TOKEN_FILE):
@@ -75,7 +78,8 @@ def authorize_user():
     "redirect_uri": REDIRECT_URI,
     "scope": "playlist-modify-public playlist-modify-private playlist-read-private"
 }
-
+    # ADD THIS DEBUG PRINT
+    print(f"\n DEBUG: Sending Redirect URI: {REDIRECT_URI}")
     auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
 
     print("\n[bold blue]Open this URL in your browser to authenticate with Spotify:[/bold blue]")
@@ -249,3 +253,15 @@ def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
     else:
         print(f"[red]Failed to add songs: {res.text}[/red]")
         return 0
+
+
+## for web app
+def get_auth_url():
+    params = {
+        "client_id": SPOTIFY_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": REDIRECT_URI,
+        "scope": "playlist-modify-public playlist-modify-private playlist-read-private"
+    }
+    print(f"\n DEBUG: Sending Redirect URI: {REDIRECT_URI}")
+    return f"https://accounts.spotify.com/authorize?{urlencode(params)}"

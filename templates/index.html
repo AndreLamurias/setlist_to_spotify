@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setlist to Spotify</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .option-group { display: none; }
+        .option-group.active { display: block; }
+    </style>
+</head>
+<body class="container mt-5" style="max-width: 600px;">
+    <h2 class="mb-4 text-center">🎵 Setlist to Spotify</h2>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-info">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if not logged_in %}
+        <div class="text-center">
+            <a href="/login" class="btn btn-primary btn-lg">Login with Spotify</a>
+        </div>
+    {% else %}
+        <form action="/sync" method="post" class="card p-4 shadow-sm">
+            <div class="mb-4">
+                <label class="form-label fw-bold">1. Setlist.fm URL</label>
+                <input type="text" name="setlist_url" class="form-control" placeholder="https://www.setlist.fm/setlist/..." required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">2. Destination</label>
+                <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="playlist_mode" id="mode_new" value="new" checked onclick="toggleMode()">
+                    <label class="btn btn-outline-primary" for="mode_new">Create New Playlist</label>
+
+                    <input type="radio" class="btn-check" name="playlist_mode" id="mode_existing" value="existing" onclick="toggleMode()">
+                    <label class="btn btn-outline-primary" for="mode_existing">Add to Existing</label>
+                </div>
+            </div>
+
+            <div id="group_new" class="option-group active mb-3">
+                <label class="form-label">New Playlist Name</label>
+                <input type="text" name="new_playlist_name" class="form-control" placeholder="e.g. My Concert Setlist">
+                <small class="text-muted">If left blank, will use the Artist's name.</small>
+            </div>
+
+            <div id="group_existing" class="option-group mb-3">
+                <label class="form-label">Spotify Playlist Link</label>
+                <input type="text" name="existing_playlist_url" class="form-control" placeholder="https://open.spotify.com/playlist/...">
+            </div>
+
+            <button type="submit" class="btn btn-success w-100 py-2">Sync Songs</button>
+        </form>
+        <div class="text-center mt-3">
+            <a href="/login" class="text-muted small">Refresh Spotify Session</a>
+        </div>
+    {% endif %}
+
+    <script>
+        function toggleMode() {
+            const isNew = document.getElementById('mode_new').checked;
+            document.getElementById('group_new').classList.toggle('active', isNew);
+            document.getElementById('group_existing').classList.toggle('active', !isNew);
+        }
+    </script>
+</body>
+</html>
