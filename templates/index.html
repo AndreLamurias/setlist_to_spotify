@@ -24,36 +24,112 @@
             <a href="/login" class="btn btn-primary btn-lg">Login with Spotify</a>
         </div>
     {% else %}
-        <form action="/sync" method="post" class="card p-4 shadow-sm">
-            <div class="mb-4">
-                <label class="form-label fw-bold">1. Setlist.fm URL</label>
-                <input type="text" name="setlist_url" class="form-control" placeholder="https://www.setlist.fm/setlist/..." required>
-            </div>
+      <form id="syncForm" class="card p-4 shadow-sm">
+    <div class="mb-4">
+        <label class="form-label fw-bold">Setlist.fm URL</label>
+        <input type="text" id="setlist_url" class="form-control" required>
+    </div>
 
-            <div class="mb-3">
-                <label class="form-label fw-bold">2. Destination</label>
-                <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="playlist_mode" id="mode_new" value="new" checked onclick="toggleMode()">
-                    <label class="btn btn-outline-primary" for="mode_new">Create New Playlist</label>
+    <div class="mb-3">
+        <label class="form-label fw-bold">Destination</label>
+        <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="playlist_mode" id="mode_new" value="new" checked onclick="toggleMode()">
+            <label class="btn btn-outline-primary" for="mode_new">Create New Playlist</label>
 
-                    <input type="radio" class="btn-check" name="playlist_mode" id="mode_existing" value="existing" onclick="toggleMode()">
-                    <label class="btn btn-outline-primary" for="mode_existing">Add to Existing</label>
-                </div>
-            </div>
+            <input type="radio" class="btn-check" name="playlist_mode" id="mode_existing" value="existing" onclick="toggleMode()">
+            <label class="btn btn-outline-primary" for="mode_existing">Add to Existing</label>
+        </div>
+    </div>
 
-            <div id="group_new" class="option-group active mb-3">
-                <label class="form-label">New Playlist Name</label>
-                <input type="text" name="new_playlist_name" class="form-control" placeholder="e.g. My Concert Setlist">
-                <small class="text-muted">If left blank, will use the Artist's name.</small>
-            </div>
+    <div id="group_new" class="option-group active mb-3">
+        <label class="form-label">New Playlist Name</label>
+        <input type="text" id="new_playlist_name" class="form-control">
+    </div>
 
-            <div id="group_existing" class="option-group mb-3">
-                <label class="form-label">Spotify Playlist Link</label>
-                <input type="text" name="existing_playlist_url" class="form-control" placeholder="https://open.spotify.com/playlist/...">
-            </div>
+    <div id="group_existing" class="option-group mb-3">
+        <label class="form-label">Spotify Playlist Link</label>
+        <input type="text" id="existing_playlist_url" class="form-control">
+    </div>
 
-            <button type="submit" class="btn btn-success w-100 py-2">Sync Songs</button>
-        </form>
+    <button type="submit" class="btn btn-success w-100 py-2" id="startBtn">Start Sync</button>
+</form>
+
+<div id="progressSection" class="mt-4" style="display: none;">
+    <h5 id="statusText">Processing...</h5>
+    <div class="progress" style="height: 25px;">
+        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+             role="progressbar" style="width: 0%">0%</div>
+    </div>
+    <div class="text-center mt-3">
+        <a href="/" class="btn btn-outline-secondary" id="resetBtn" style="display: none;">Start Over</a>
+    </div>
+</div>
+
+<script>
+    function toggleMode() {
+        const isNew = document.getElementById('mode_new').checked;
+        document.getElementById('group_new').classList.toggle('active', isNew);
+        document.getElementById('group_existing').classList.toggle('active', !isNew);
+    }
+
+    document.getElementById('syncForm').addEventListener('submit', function(e) {
+        e.preventDefault(); // Stop standard form submission
+
+        // UI Updates
+        document.getElementById('syncForm').style.display = 'none';
+        document.getElementById('progressSection').style.display = 'block';
+
+        // Gather Data
+        const data = {
+            setlist_url: document.getElementById('setlist_url').value,
+            playlist_mode: document.querySelector('input[name="playlist_mode"]:checked').value,
+            new_playlist_name: document.getElementById('new_playlist_name').value,
+            existing_playlist_url: document.getElementById('existing_playlist_url').value
+        };
+
+        // Start Job
+        fetch('/start_sync_job', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                alert(data.error);
+                location.reload();
+            } else {
+                trackProgress(data.task_id);
+            }
+        });
+    });
+
+    function trackProgress(taskId) {
+        const interval = setInterval(() => {
+            fetch(`/status/${taskId}`)
+            .then(res => res.json())
+            .then(data => {
+                // Update Bar
+                const percent = data.percent || 0;
+                const bar = document.getElementById('progressBar');
+                bar.style.width = percent + '%';
+                bar.innerText = percent + '%';
+                document.getElementById('statusText').innerText = data.status;
+
+                // Check finish
+                if (data.finished) {
+                    clearInterval(interval);
+                    bar.classList.remove('progress-bar-animated');
+                    document.getElementById('resetBtn').style.display = 'inline-block';
+                    if(!data.success) {
+                        bar.classList.add('bg-danger'); // Red bar on failure
+                        bar.classList.remove('bg-success');
+                    }
+                }
+            });
+        }, 1000); // Check every 1 second
+    }
+</script>
         <div class="text-center mt-3">
             <a href="/login" class="text-muted small">Refresh Spotify Session</a>
         </div>

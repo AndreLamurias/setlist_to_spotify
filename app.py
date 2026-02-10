@@ -1,4 +1,7 @@
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+import threading
+import uuid
+import time
+from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
 import os
 from spotify_helper import (
     get_auth_url, REDIRECT_URI, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
@@ -9,6 +12,55 @@ import requests
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+
+
+task_status = {}
+
+def background_sync(task_id, token, setlist_url, playlist_mode, new_name, existing_url):
+    try:
+        # 1. Get Songs
+        songs, artist = get_setlist_from_url(setlist_url)
+        if not songs:
+            task_status[task_id] = {'finished': True, 'success': False, 'message': "No songs found."}
+            return
+
+        # 2. Get/Create Playlist
+        user_id = get_current_user_id(token)
+        playlist_id = None
+
+        if playlist_mode == 'new':
+            final_name = new_name if new_name else f"{artist} Setlist"
+            playlist_id = create_spotify_playlist(token, user_id, final_name, "Created via Web App")
+        elif playlist_mode == 'existing':
+            if existing_url:
+                playlist_id = extract_playlist_id(existing_url)
+
+        if not playlist_id:
+            task_status[task_id] = {'finished': True, 'success': False, 'message': "Invalid Playlist ID."}
+            return
+
+        # Define the callback to update global dict
+        def update_progress(current, total, message):
+            task_status[task_id].update({
+                'current': current,
+                'total': total,
+                'status': message,
+                'percent': int((current / total) * 100) if total > 0 else 0
+            })
+
+        # 3. Add songs with callback
+        added_count = add_songs_to_playlist(token, songs, artist, playlist_id, progress_callback=update_progress)
+        
+        # Mark complete
+        task_status[task_id].update({
+            'finished': True, 
+            'success': True, 
+            'message': f"Done! Added {added_count} songs.",
+            'percent': 100
+        })
+
+    except Exception as e:
+        task_status[task_id] = {'finished': True, 'success': False, 'message': f"Error: {str(e)}"}
 
 @app.route('/')
 def index():
@@ -75,6 +127,38 @@ def sync():
         flash(f"Error: {str(e)}")
 
     return redirect(url_for('index'))
+
+@app.route('/start_sync_job', methods=['POST'])
+def start_sync_job():
+    token = session.get('token')
+    if not token:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    # Generate a unique ID for this job
+    task_id = str(uuid.uuid4())
+    
+    # Initialize status
+    task_status[task_id] = {
+        'current': 0, 'total': 1, 'status': 'Starting...', 'percent': 0, 'finished': False
+    }
+
+    # Extract form data
+    data = request.json
+    thread = threading.Thread(target=background_sync, args=(
+        task_id, 
+        token, 
+        data.get('setlist_url'), 
+        data.get('playlist_mode'), 
+        data.get('new_playlist_name'), 
+        data.get('existing_playlist_url')
+    ))
+    thread.start()
+
+    return jsonify({'task_id': task_id})
+
+@app.route('/status/<task_id>')
+def status(task_id):
+    return jsonify(task_status.get(task_id, {'error': 'Unknown task'}))
 
 if __name__ == '__main__':
     print(f"DEBUG: Client ID is {SPOTIFY_CLIENT_ID}")

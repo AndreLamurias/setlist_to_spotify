@@ -198,7 +198,7 @@ def create_spotify_playlist(access_token, user_id, name, description="", public=
         return None
 
 
-def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
+def add_songs_to_playlist(access_token, songs, artist_name, playlist_id, progress_callback=None):
     headers = {"Authorization": f"Bearer {access_token}"}
     uris = []
 
@@ -206,9 +206,14 @@ def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
     existing_tracks = get_playlist_tracks(access_token, playlist_id)
     existing_uris = {track["uri"] for track in existing_tracks}
 
+    total_songs = len(songs)
+
     def similar(a, b): return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
-    for song in songs:
+    for i, song in enumerate(songs):
+        if progress_callback:
+            progress_callback(i, total_songs, f"Searching for: {song}...")
+
         search = requests.get("https://api.spotify.com/v1/search", headers=headers, params={
             "q": f"{artist_name} {song} ",
             "type": "track",
@@ -217,9 +222,11 @@ def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
 
         tracks = search.get("tracks", {}).get("items", [])
         found = False
+
         for track in tracks:
             track_artists = [artist["name"] for artist in track["artists"]]
             track_uri = track["uri"]
+
             if any(similar(track_artist, artist_name) > 0.8 for track_artist in track_artists):
                 if track_uri not in existing_uris:  # Check if the track is already in the playlist
                     uris.append(track_uri)
@@ -236,16 +243,28 @@ def add_songs_to_playlist(access_token, songs, artist_name, playlist_id):
             #breakpoint()
             print(f"❌ Not found or wrong artist: {song}")
 
+    if uris:
+        if progress_callback:
+            progress_callback(total_songs, total_songs, "Adding songs to playlist...")
+        # Add in chunks of 100 (Spotify API limit)
+        for i in range(0, len(uris), 100):
+            chunk = uris[i:i+100]
+            res = requests.post(
+                f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+                headers=headers,
+                json={"uris": chunk}
+            )
+
     if not uris:
         print("No new songs found to add.")
         return 0
 
     # Add non-duplicate songs to the playlist
-    res = requests.post(
-        f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
-        headers=headers,
-        json={"uris": uris}
-    )
+    #res = requests.post(
+    #    f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+    #    headers=headers,
+    #    json={"uris": uris}
+    #)
 
     if res.status_code == 201:
         print("[green]🎉 Songs added to playlist![/green]")
