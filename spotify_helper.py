@@ -14,7 +14,7 @@ from dotenv import load_dotenv  # Add this
 
 load_dotenv()  # Add this immediately
 
-REDIRECT_URI = "http://127.0.0.1:8888/callback"
+REDIRECT_URI = os.getenv("REDIRECT_URI")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 TOKEN_FILE = ".spotify_token.json"
